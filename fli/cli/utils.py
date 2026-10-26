@@ -333,6 +333,11 @@ def serialize_date_result(
         value = getattr(date_result, field, None)
         if value is not None:
             payload[field] = value
+    # kayden-tools patch: the cheapest itinerary's flights, in the same shape as
+    # ``fli flights`` legs, so a caller can show when it departs and lands.
+    legs = getattr(date_result, "legs", None)
+    if legs:
+        payload["legs"] = [serialize_flight_leg(leg) for leg in legs]
     if origin and destination:
         payload["booking_url"] = google_flights_url(
             origin,

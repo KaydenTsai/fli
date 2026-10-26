@@ -5,22 +5,22 @@
 | 分支 | 內容 |
 |---|---|
 | `main` | 與原作者一致，不放任何修改 |
-| `kayden-tools` | 原作者某個 commit + 一個修改 commit（本檔說明的內容） |
+| `kayden-tools` | 原作者某個 commit + 修改 commit（本檔說明的內容） |
 
-kayden-tools 的 Dockerfile（`backend/src/Dockerfile` 的 `FLI_SOURCE_URL`）指向 `kayden-tools` 分支上的修改 commit。
+kayden-tools 的 Dockerfile（`backend/src/Dockerfile` 的 `FLI_SOURCE_URL`）指向 `kayden-tools` 分支上最新的修改 commit。
 
 ## 修改了什麼
 
-讓 `fli dates` 每天除了最低價，也回傳那個班次的總飛行時間與轉機次數，並支援最長飛行時間篩選。只新增欄位與選項，不改既有輸出。
+讓 `fli dates` 每天除了最低價，也回傳那個班次的總飛行時間、轉機次數與每段航班（起降時間、航空公司、班號），並支援最長飛行時間篩選。只新增欄位與選項，不改既有輸出。
 
 | 檔案 | 函式／位置 | 修改 |
 |---|---|---|
-| `fli/search/dates.py` | `DatePrice` | 新增選填欄位 `flight_duration_minutes`、`stops` |
-| `fli/search/dates.py` | `SearchDates._price_one_date` | 原本只取 `min(prices)`；改成挑出最便宜的班次物件（同價取時長較短者），一併填入時長與轉機次數。來回票查詢不填這兩欄 |
-| `fli/cli/utils.py` | `serialize_date_result` | 欄位有值時，JSON 輸出 `flight_duration_minutes`、`stops` |
+| `fli/search/dates.py` | `DatePrice` | 新增選填欄位 `flight_duration_minutes`、`stops`、`legs`（`FlightLeg` 清單） |
+| `fli/search/dates.py` | `SearchDates._price_one_date` | 原本只取 `min(prices)`；改成挑出最便宜的班次物件（同價取時長較短者），一併填入時長、轉機次數與各段航班。來回票查詢不填這三欄 |
+| `fli/cli/utils.py` | `serialize_date_result` | 欄位有值時，JSON 輸出 `flight_duration_minutes`、`stops`；`legs` 沿用 `fli flights` 的 `serialize_flight_leg` 格式 |
 | `fli/cli/commands/dates.py` | `dates` 指令 | 新增 `--max-duration <分鐘>`，傳進 `DateSearchFilters.max_duration`，並寫進 JSON 的 `query`（成功與錯誤回應都有） |
-| `tests/search/test_date_sweep.py` | `TestCheapestItineraryDetails` | 挑選邏輯、同價取短、最長時間篩選、來回票不填 |
-| `tests/cli/test_dates.py` | 檔尾兩個測試 | `--max-duration` 傳遞與 JSON 欄位 |
+| `tests/search/test_date_sweep.py` | `TestCheapestItineraryDetails` | 挑選邏輯、同價取短、最長時間篩選、來回票不填、各段航班 |
+| `tests/cli/test_dates.py` | 檔尾三個測試 | `--max-duration` 傳遞與 JSON 欄位、`legs` 輸出 |
 
 每個修改點都有 `kayden-tools patch` 註解，用 `grep -rn "kayden-tools patch" fli tests` 可以全部找出來。
 
@@ -48,7 +48,7 @@ uv run --extra dev ruff check fli tests
 fli dates TPE BKK --from <今天+30> --to <今天+36> --currency TWD --max-duration 240 --format json
 ```
 
-最後一個指令的每一天都應該有 `flight_duration_minutes`，而且都不超過 240。
+最後一個指令的每一天都應該有 `flight_duration_minutes`（不超過 240）與 `legs`。
 
 ## 更新 kayden-tools
 

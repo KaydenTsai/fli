@@ -901,4 +901,13 @@ class TestCheapestItineraryDetails:
         page = _page([_timed_row(300.0, duration=230)])
         results = _search_with(StubClient(page)).search(_round_trip_date_filters(days=1))
         assert results is not None
-        assert [(r.flight_duration_minutes, r.stops) for r in results] == [(None, None)]
+        assert [(r.flight_duration_minutes, r.stops, r.legs) for r in results] == [
+            (None, None, None)
+        ]
+
+    def test_reports_the_cheapest_itinerarys_flights(self):
+        page = _page([_timed_row(500.0, duration=200), _timed_row(300.0, duration=410, legs=2)])
+        results = _search_with(StubClient(page)).search(_filters(days=1))
+        assert results is not None
+        assert [leg.flight_number for leg in results[0].legs] == ["100", "101"]
+        assert results[0].legs[0].departure_datetime.hour == 9

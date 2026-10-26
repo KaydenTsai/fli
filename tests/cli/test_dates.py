@@ -7,8 +7,8 @@ import pytest
 from typer.testing import CliRunner
 
 from fli.cli.main import app
-from fli.models import Airline
-from fli.models.google_flights.base import TripType
+from fli.models import Airline, Airport
+from fli.models.google_flights.base import FlightLeg, TripType
 from fli.search import DatePrice
 from fli.search.exceptions import (
     SearchCertificateError,
@@ -524,3 +524,30 @@ def test_dates_json_omits_details_the_sweep_did_not_record(runner, mock_search_d
     assert payload["query"]["max_duration"] is None
     assert "flight_duration_minutes" not in payload["dates"][0]
     assert "stops" not in payload["dates"][0]
+    assert "legs" not in payload["dates"][0]
+
+
+def test_dates_json_lists_the_cheapest_itinerarys_legs(runner, mock_search_dates, mock_console):
+    """Each date carries its cheapest itinerary's flights in the ``fli flights`` leg shape."""
+    day = datetime.now() + timedelta(days=30)
+    leg = FlightLeg(
+        airline=Airline.SL,
+        flight_number="393",
+        departure_airport=Airport.KHH,
+        arrival_airport=Airport.DMK,
+        departure_datetime=day.replace(hour=19, minute=5, second=0, microsecond=0),
+        arrival_datetime=day.replace(hour=21, minute=30, second=0, microsecond=0),
+        duration=205,
+    )
+    mock_search_dates.search.return_value = [
+        DatePrice(date=(day,), price=3451.0, flight_duration_minutes=205, stops=0, legs=[leg]),
+    ]
+    result = runner.invoke(app, ["dates", "KHH", "DMK", "--format", "json"])
+    assert result.exit_code == 0
+    legs = json.loads(result.stdout)["dates"][0]["legs"]
+    assert len(legs) == 1
+    assert legs[0]["airline"]["code"] == "SL"
+    assert legs[0]["flight_number"] == "393"
+    assert legs[0]["departure_airport"]["code"] == "KHH"
+    assert legs[0]["departure_time"].endswith("19:05:00")
+    assert legs[0]["arrival_time"].endswith("21:30:00")

@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from fli.core import extract_currency_from_price_token
 from fli.models import DateSearchFilters, FlightResult, PassengerInfo
-from fli.models.google_flights.base import TripType, earliest_searchable_date
+from fli.models.google_flights.base import FlightLeg, TripType, earliest_searchable_date
 from fli.search._concurrency import parallel_map
 from fli.search._decoders import parse_flight_row
 from fli.search._tfs import (
@@ -144,11 +144,11 @@ class _SweepHealth:
 class DatePrice(BaseModel):
     """Flight price for a specific date.
 
-    ``flight_duration_minutes`` and ``stops`` describe the itinerary that set
-    ``price`` (total time in the air plus layovers, and its stop count). They
-    are only filled for one-way sweeps: a round-trip row prices both legs, so
-    a single duration would misdescribe it. (kayden-tools patch, see
-    KAYDEN_PATCHES.md)
+    ``flight_duration_minutes``, ``stops`` and ``legs`` describe the itinerary
+    that set ``price`` (total time in the air plus layovers, its stop count,
+    and each flight's times, airline and number). They are only filled for
+    one-way sweeps: a round-trip row prices both directions, so one itinerary
+    would misdescribe it. (kayden-tools patch, see KAYDEN_PATCHES.md)
     """
 
     date: tuple[datetime] | tuple[datetime, datetime]
@@ -156,6 +156,7 @@ class DatePrice(BaseModel):
     currency: str | None = None
     flight_duration_minutes: int | None = None
     stops: int | None = None
+    legs: list[FlightLeg] | None = None
 
 
 class _DateOutcome(NamedTuple):
@@ -733,6 +734,7 @@ class SearchDates:
                 currency=currency,
                 flight_duration_minutes=cheapest.duration if one_way else None,
                 stops=cheapest.stops if one_way else None,
+                legs=list(cheapest.legs) if one_way else None,
             ),
             rows_before_filters=len(raw_flights),
         )
