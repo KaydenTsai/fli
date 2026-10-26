@@ -838,3 +838,67 @@ class TestMostlyFailedSweepIsLoud:
         ]
         with pytest.raises(SearchClientError):
             dates_module.SearchDates._collect(outcomes, 7, skipped=0)
+
+
+# ---------------------------------------------------------------------------
+# kayden-tools patch: the cheapest itinerary's duration and stops
+# ---------------------------------------------------------------------------
+
+
+def _timed_row(price: float, duration: int, legs: int = 1) -> list:
+    """Build a row with an explicit total duration and leg count (stops = legs - 1)."""
+    row = _row(price)
+    row[0][9] = duration
+    row[0][2] = [_leg(flight_number=str(100 + index)) for index in range(legs)]
+    return row
+
+
+def _round_trip_date_filters(days: int) -> DateSearchFilters:
+    """Round-trip date filters spanning ``days`` departure dates, 7-day trips."""
+    return DateSearchFilters(
+        trip_type=TripType.ROUND_TRIP,
+        passenger_info=PassengerInfo(adults=1),
+        flight_segments=[
+            FlightSegment(
+                departure_airport=[[Airport.JFK, 0]],
+                arrival_airport=[[Airport.LAX, 0]],
+                travel_date=FIRST_DAY.strftime("%Y-%m-%d"),
+            ),
+            FlightSegment(
+                departure_airport=[[Airport.LAX, 0]],
+                arrival_airport=[[Airport.JFK, 0]],
+                travel_date=(FIRST_DAY + timedelta(days=7)).strftime("%Y-%m-%d"),
+            ),
+        ],
+        from_date=FIRST_DAY.strftime("%Y-%m-%d"),
+        to_date=(FIRST_DAY + timedelta(days=days - 1)).strftime("%Y-%m-%d"),
+        duration=7,
+    )
+
+
+class TestCheapestItineraryDetails:
+    """A date's price carries the duration and stops of the itinerary that set it."""
+
+    def test_reports_the_cheapest_itinerary_not_the_shortest(self):
+        page = _page([_timed_row(500.0, duration=200), _timed_row(300.0, duration=410, legs=2)])
+        results = _search_with(StubClient(page)).search(_filters(days=1))
+        assert results is not None
+        assert [(r.price, r.flight_duration_minutes, r.stops) for r in results] == [(300.0, 410, 1)]
+
+    def test_a_price_tie_reports_the_shorter_itinerary(self):
+        page = _page([_timed_row(300.0, duration=410, legs=2), _timed_row(300.0, duration=230)])
+        results = _search_with(StubClient(page)).search(_filters(days=1))
+        assert results is not None
+        assert [(r.price, r.flight_duration_minutes, r.stops) for r in results] == [(300.0, 230, 0)]
+
+    def test_max_duration_moves_the_price_to_an_itinerary_within_the_limit(self):
+        page = _page([_timed_row(300.0, duration=600, legs=2), _timed_row(450.0, duration=230)])
+        results = _search_with(StubClient(page)).search(_filters(days=1, max_duration=300))
+        assert results is not None
+        assert [(r.price, r.flight_duration_minutes, r.stops) for r in results] == [(450.0, 230, 0)]
+
+    def test_round_trip_rows_leave_duration_and_stops_empty(self):
+        page = _page([_timed_row(300.0, duration=230)])
+        results = _search_with(StubClient(page)).search(_round_trip_date_filters(days=1))
+        assert results is not None
+        assert [(r.flight_duration_minutes, r.stops) for r in results] == [(None, None)]

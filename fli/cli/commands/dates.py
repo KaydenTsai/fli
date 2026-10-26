@@ -262,6 +262,16 @@ def dates(
             min=1,
         ),
     ] = None,
+    # kayden-tools patch: ``DateSearchFilters.max_duration`` was already honoured
+    # by ``apply_client_side_filters``; this option only exposes it on the CLI.
+    max_duration: Annotated[
+        int | None,
+        typer.Option(
+            "--max-duration",
+            help="Maximum total itinerary duration in minutes, layovers included.",
+            min=1,
+        ),
+    ] = None,
     passengers: Annotated[
         int,
         typer.Option(
@@ -338,6 +348,7 @@ def dates(
             "is_round_trip": is_round_trip,
             "cabin_class": seat_type.name,
             "max_stops": stops.name,
+            "max_duration": max_duration,
             "departure_window": (
                 f"{departure_window[0]}-{departure_window[1]}" if departure_window else None
             ),
@@ -402,6 +413,7 @@ def dates(
             airlines_exclude=parsed_exclude_airlines,
             alliances=parsed_alliances,
             alliances_exclude=parsed_exclude_alliances,
+            max_duration=max_duration,
             layover_restrictions=layover_restrictions,
             from_date=start_date,
             to_date=end_date,
@@ -489,6 +501,7 @@ def dates(
                         "is_round_trip": is_round_trip,
                         "cabin_class": cabin_class,
                         "max_stops": max_stops,
+                        "max_duration": max_duration,
                         "departure_window": (
                             f"{departure_window[0]}-{departure_window[1]}"
                             if isinstance(departure_window, tuple)
@@ -573,6 +586,7 @@ def dates(
                         "is_round_trip": is_round_trip,
                         "cabin_class": cabin_class,
                         "max_stops": max_stops,
+                        "max_duration": max_duration,
                         "departure_window": (
                             f"{departure_window[0]}-{departure_window[1]}"
                             if isinstance(departure_window, tuple)

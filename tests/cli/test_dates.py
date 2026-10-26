@@ -486,3 +486,41 @@ def test_dates_json_error_type_matches_shared_classifier(
     assert payload["success"] is False
     assert payload["error"]["type"] == expected_type
     assert payload["error"]["retryable"] is expected_retryable
+
+
+# kayden-tools patch: --max-duration and the cheapest itinerary's details
+
+
+def test_dates_max_duration_reaches_filters_and_query(runner, mock_search_dates, mock_console):
+    """--max-duration is passed to the search filters and echoed in the JSON query."""
+    mock_search_dates.search.return_value = [
+        DatePrice(
+            date=(datetime.now() + timedelta(days=30),),
+            price=5855.0,
+            flight_duration_minutes=235,
+            stops=0,
+        ),
+    ]
+    result = runner.invoke(
+        app, ["dates", "JFK", "LAX", "--max-duration", "300", "--format", "json"]
+    )
+    assert result.exit_code == 0
+    args, _ = mock_search_dates.search.call_args
+    assert args[0].max_duration == 300
+    payload = json.loads(result.stdout)
+    assert payload["query"]["max_duration"] == 300
+    assert payload["dates"][0]["flight_duration_minutes"] == 235
+    assert payload["dates"][0]["stops"] == 0
+
+
+def test_dates_json_omits_details_the_sweep_did_not_record(runner, mock_search_dates, mock_console):
+    """Results without duration or stops keep the original JSON shape."""
+    mock_search_dates.search.return_value = [
+        DatePrice(date=(datetime.now() + timedelta(days=30),), price=299.99),
+    ]
+    result = runner.invoke(app, ["dates", "JFK", "LAX", "--format", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["query"]["max_duration"] is None
+    assert "flight_duration_minutes" not in payload["dates"][0]
+    assert "stops" not in payload["dates"][0]

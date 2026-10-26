@@ -142,11 +142,20 @@ class _SweepHealth:
 
 
 class DatePrice(BaseModel):
-    """Flight price for a specific date."""
+    """Flight price for a specific date.
+
+    ``flight_duration_minutes`` and ``stops`` describe the itinerary that set
+    ``price`` (total time in the air plus layovers, and its stop count). They
+    are only filled for one-way sweeps: a round-trip row prices both legs, so
+    a single duration would misdescribe it. (kayden-tools patch, see
+    KAYDEN_PATCHES.md)
+    """
 
     date: tuple[datetime] | tuple[datetime, datetime]
     price: float
     currency: str | None = None
+    flight_duration_minutes: int | None = None
+    stops: int | None = None
 
 
 class _DateOutcome(NamedTuple):
@@ -693,7 +702,10 @@ class SearchDates:
             # — see ``_DateOutcome`` and ``_warn_if_sparse_passenger_mix``.
             raw_flights = _flights_in(payload)
             flights = apply_client_side_filters(raw_flights, filters)
-            prices = [flight.price for flight in flights if flight.price]
+            # kayden-tools patch: keep the priced itineraries themselves, not
+            # just their prices, so the cheapest one's duration and stops can
+            # be reported alongside the price.
+            priced = [flight for flight in flights if flight.price]
         except Exception as exc:  # noqa: BLE001 — one bad date must not sink the sweep
             # One concise line per bad date. A 93-date sweep against a blocked
             # client would otherwise print 93 full tracebacks through
@@ -707,14 +719,20 @@ class SearchDates:
             # payload. See SWEEP_FAILURE_THRESHOLD.
             return _DateOutcome(failure=f"{type(exc).__name__}: {exc}", error=exc)
 
-        if not prices:
+        if not priced:
             return _DateOutcome(rows_before_filters=len(raw_flights))
 
+        # kayden-tools patch: on a price tie, report the shorter itinerary —
+        # it is the one a traveller would pick at that price.
+        cheapest = min(priced, key=lambda flight: (flight.price, flight.duration))
+        one_way = filters.trip_type != TripType.ROUND_TRIP
         return _DateOutcome(
             price=DatePrice(
                 date=tuple(dates),
-                price=min(prices),
+                price=cheapest.price,
                 currency=currency,
+                flight_duration_minutes=cheapest.duration if one_way else None,
+                stops=cheapest.stops if one_way else None,
             ),
             rows_before_filters=len(raw_flights),
         )

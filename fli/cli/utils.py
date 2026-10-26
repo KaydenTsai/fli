@@ -325,6 +325,14 @@ def serialize_date_result(
         "price": date_result.price,
         "currency": date_result.currency or default_currency,
     }
+    # kayden-tools patch: additive, like ``booking_url`` — emitted only when the
+    # sweep recorded them (one-way searches), so other callers see no change.
+    # Named ``flight_duration_minutes`` because ``fli dates --duration`` already
+    # means the round-trip length in days.
+    for field in ("flight_duration_minutes", "stops"):
+        value = getattr(date_result, field, None)
+        if value is not None:
+            payload[field] = value
     if origin and destination:
         payload["booking_url"] = google_flights_url(
             origin,
