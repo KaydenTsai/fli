@@ -911,3 +911,60 @@ class TestCheapestItineraryDetails:
         assert results is not None
         assert [leg.flight_number for leg in results[0].legs] == ["100", "101"]
         assert results[0].legs[0].departure_datetime.hour == 9
+
+
+# ---------------------------------------------------------------------------
+# kayden-tools patch: every priced itinerary from the expanded page
+# ---------------------------------------------------------------------------
+
+
+class _RecordingClient(StubClient):
+    """A ``StubClient`` that also remembers which URLs were requested."""
+
+    def __init__(self, body: str):
+        super().__init__(body)
+        self.urls: list[str] = []
+
+    def get(self, url: str, **kwargs: Any) -> _Response:
+        with self._lock:
+            self.urls.append(url)
+        return super().get(url, **kwargs)
+
+
+class TestAllFlights:
+    """``all_flights`` reads the expanded page and keeps every priced itinerary."""
+
+    def test_lists_every_priced_itinerary_cheapest_first(self):
+        rows = [
+            _timed_row(500.0, duration=200),
+            _timed_row(300.0, duration=410, legs=2),
+            _timed_row(300.0, duration=230),
+        ]
+        results = _search_with(StubClient(_page(rows))).search(_filters(days=1), all_flights=True)
+        assert results is not None
+        listed = results[0].flights
+        assert listed is not None
+        assert [(f.price, f.duration) for f in listed] == [(300.0, 230), (300.0, 410), (500.0, 200)]
+        assert (results[0].price, results[0].flight_duration_minutes) == (300.0, 230)
+
+    def test_requests_the_expanded_page(self):
+        client = _RecordingClient(_page([_timed_row(300.0, duration=230)]))
+        _search_with(client).search(_filters(days=1), all_flights=True)
+        assert client.urls and all(
+            "/travel/flights/search?" in url and "tfu=" in url for url in client.urls
+        )
+
+    def test_default_sweep_keeps_the_original_page_and_no_list(self):
+        client = _RecordingClient(_page([_timed_row(300.0, duration=230)]))
+        results = _search_with(client).search(_filters(days=1))
+        assert results is not None
+        assert results[0].flights is None
+        assert all("tfu=" not in url for url in client.urls)
+
+    def test_round_trip_rows_leave_the_list_empty(self):
+        page = _page([_timed_row(300.0, duration=230)])
+        results = _search_with(StubClient(page)).search(
+            _round_trip_date_filters(days=1), all_flights=True
+        )
+        assert results is not None
+        assert results[0].flights is None

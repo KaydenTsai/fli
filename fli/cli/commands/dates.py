@@ -272,6 +272,15 @@ def dates(
             min=1,
         ),
     ] = None,
+    # kayden-tools patch: read each date from the expanded search page and list
+    # every priced itinerary under ``flights`` in the JSON output.
+    all_flights: Annotated[
+        bool,
+        typer.Option(
+            "--all-flights",
+            help="One-way only: list every priced itinerary per date (JSON `flights`).",
+        ),
+    ] = False,
     passengers: Annotated[
         int,
         typer.Option(
@@ -349,6 +358,7 @@ def dates(
             "cabin_class": seat_type.name,
             "max_stops": stops.name,
             "max_duration": max_duration,
+            "all_flights": all_flights,
             "departure_window": (
                 f"{departure_window[0]}-{departure_window[1]}" if departure_window else None
             ),
@@ -427,6 +437,7 @@ def dates(
             currency=currency,
             language=language,
             country=country,
+            all_flights=all_flights,
         )
 
         if not results:
@@ -502,6 +513,7 @@ def dates(
                         "cabin_class": cabin_class,
                         "max_stops": max_stops,
                         "max_duration": max_duration,
+                        "all_flights": all_flights,
                         "departure_window": (
                             f"{departure_window[0]}-{departure_window[1]}"
                             if isinstance(departure_window, tuple)
@@ -587,6 +599,7 @@ def dates(
                         "cabin_class": cabin_class,
                         "max_stops": max_stops,
                         "max_duration": max_duration,
+                        "all_flights": all_flights,
                         "departure_window": (
                             f"{departure_window[0]}-{departure_window[1]}"
                             if isinstance(departure_window, tuple)

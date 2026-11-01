@@ -406,6 +406,16 @@ class TestPageUrl:
         url = page_url("TFS")
         assert "hl=en" in url and "gl=US" in url and "curr=" not in url
 
+    # kayden-tools patch: the expanded "View more flights" page
+    def test_show_all_addresses_the_expanded_page(self):
+        url = page_url("TFS", currency="TWD", show_all=True)
+        assert url.startswith("https://www.google.com/travel/flights/search?tfs=TFS&tfu=")
+        assert "curr=TWD" in url
+
+    def test_default_page_carries_no_page_state(self):
+        url = page_url("TFS")
+        assert url.startswith("https://www.google.com/travel/flights?") and "tfu=" not in url
+
 
 class TestExtractPayload:
     def test_reads_the_ds1_blob(self):

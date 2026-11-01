@@ -148,7 +148,10 @@ class DatePrice(BaseModel):
     that set ``price`` (total time in the air plus layovers, its stop count,
     and each flight's times, airline and number). They are only filled for
     one-way sweeps: a round-trip row prices both directions, so one itinerary
-    would misdescribe it. (kayden-tools patch, see KAYDEN_PATCHES.md)
+    would misdescribe it. ``flights`` lists every priced itinerary for the
+    date, cheapest first, and is only filled when the sweep asked for it
+    (``all_flights``) on a one-way search. (kayden-tools patch, see
+    KAYDEN_PATCHES.md)
     """
 
     date: tuple[datetime] | tuple[datetime, datetime]
@@ -157,6 +160,7 @@ class DatePrice(BaseModel):
     flight_duration_minutes: int | None = None
     stops: int | None = None
     legs: list[FlightLeg] | None = None
+    flights: list[FlightResult] | None = None
 
 
 class _DateOutcome(NamedTuple):
@@ -276,6 +280,8 @@ class SearchDates:
         currency: str | None = None,
         language: str | None = None,
         country: str | None = None,
+        *,
+        all_flights: bool = False,
     ) -> list[DatePrice] | None:
         """Search for flight prices across a date range and search parameters.
 
@@ -284,6 +290,9 @@ class SearchDates:
             currency: Optional ISO 4217 currency code (e.g. ``"EUR"``) to bill prices in.
             language: Optional BCP-47 language code passed via the ``hl`` URL param.
             country: Optional ISO 3166-1 alpha-2 country code passed via the ``gl`` URL param.
+            all_flights: Price each date from the expanded search page and keep
+                every priced itinerary on ``DatePrice.flights`` (one-way only).
+                Same number of page fetches. (kayden-tools patch)
 
         Returns:
             List of DatePrice objects containing date and price pairs, or None if no results
@@ -355,6 +364,7 @@ class SearchDates:
                 language=language,
                 country=country,
                 health=health,
+                all_flights=all_flights,
             ),
             tasks,
         )
@@ -621,6 +631,7 @@ class SearchDates:
         language: str | None,
         country: str | None,
         health: "_SweepHealth | None" = None,
+        all_flights: bool = False,
     ) -> _DateOutcome:
         """Price one departure date through its own search-page fetch.
 
@@ -666,7 +677,13 @@ class SearchDates:
             health.record_skip()
             return _DateOutcome(attempted=False)
 
-        url = page_url(build_tfs(filters, travel_dates=travel_dates), currency, language, country)
+        url = page_url(
+            build_tfs(filters, travel_dates=travel_dates),
+            currency,
+            language,
+            country,
+            show_all=all_flights,
+        )
         try:
             payload = fetch_payload(self.client, url)
             if payload is None:
@@ -727,6 +744,13 @@ class SearchDates:
         # it is the one a traveller would pick at that price.
         cheapest = min(priced, key=lambda flight: (flight.price, flight.duration))
         one_way = filters.trip_type != TripType.ROUND_TRIP
+        # kayden-tools patch: every priced itinerary, cheapest first with the
+        # same tie-break as ``cheapest``, so ``flights[0]`` is the one priced.
+        listed = (
+            sorted(priced, key=lambda flight: (flight.price, flight.duration))
+            if all_flights and one_way
+            else None
+        )
         return _DateOutcome(
             price=DatePrice(
                 date=tuple(dates),
@@ -735,6 +759,7 @@ class SearchDates:
                 flight_duration_minutes=cheapest.duration if one_way else None,
                 stops=cheapest.stops if one_way else None,
                 legs=list(cheapest.legs) if one_way else None,
+                flights=listed,
             ),
             rows_before_filters=len(raw_flights),
         )

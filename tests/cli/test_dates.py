@@ -7,8 +7,8 @@ import pytest
 from typer.testing import CliRunner
 
 from fli.cli.main import app
-from fli.models import Airline, Airport
-from fli.models.google_flights.base import FlightLeg, TripType
+from fli.models import Airline, Airport, FlightResult
+from fli.models.google_flights.base import Amenities, FlightLeg, TripType
 from fli.search import DatePrice
 from fli.search.exceptions import (
     SearchCertificateError,
@@ -551,3 +551,60 @@ def test_dates_json_lists_the_cheapest_itinerarys_legs(runner, mock_search_dates
     assert legs[0]["departure_airport"]["code"] == "KHH"
     assert legs[0]["departure_time"].endswith("19:05:00")
     assert legs[0]["arrival_time"].endswith("21:30:00")
+
+
+# kayden-tools patch: --all-flights
+
+
+def test_dates_all_flights_lists_every_itinerary_without_amenities(
+    runner, mock_search_dates, mock_console
+):
+    """--all-flights reaches the search and each date lists its itineraries."""
+    day = datetime.now() + timedelta(days=30)
+    leg = FlightLeg(
+        airline=Airline.SL,
+        flight_number="393",
+        departure_airport=Airport.KHH,
+        arrival_airport=Airport.DMK,
+        departure_datetime=day.replace(hour=19, minute=5, second=0, microsecond=0),
+        arrival_datetime=day.replace(hour=21, minute=30, second=0, microsecond=0),
+        duration=205,
+        amenities=Amenities(wifi=True),
+    )
+    flights = [
+        FlightResult(legs=[leg], price=3451.0, duration=205, stops=0),
+        FlightResult(legs=[leg], price=3900.0, duration=205, stops=0),
+    ]
+    mock_search_dates.search.return_value = [
+        DatePrice(date=(day,), price=3451.0, legs=[leg], flights=flights),
+    ]
+    result = runner.invoke(app, ["dates", "KHH", "DMK", "--all-flights", "--format", "json"])
+    assert result.exit_code == 0
+    _, kwargs = mock_search_dates.search.call_args
+    assert kwargs["all_flights"] is True
+    payload = json.loads(result.stdout)
+    assert payload["query"]["all_flights"] is True
+    listed = payload["dates"][0]["flights"]
+    assert [(f["price"], f["duration"], f["stops"]) for f in listed] == [
+        (3451.0, 205, 0),
+        (3900.0, 205, 0),
+    ]
+    assert listed[0]["legs"][0]["flight_number"] == "393"
+    assert "amenities" not in listed[0]["legs"][0]
+    assert "amenities" in payload["dates"][0]["legs"][0]
+
+
+def test_dates_without_all_flights_keeps_the_original_shape(
+    runner, mock_search_dates, mock_console
+):
+    """Without the flag the search is asked for no list and the JSON has none."""
+    mock_search_dates.search.return_value = [
+        DatePrice(date=(datetime.now() + timedelta(days=30),), price=299.99),
+    ]
+    result = runner.invoke(app, ["dates", "JFK", "LAX", "--format", "json"])
+    assert result.exit_code == 0
+    _, kwargs = mock_search_dates.search.call_args
+    assert kwargs["all_flights"] is False
+    payload = json.loads(result.stdout)
+    assert payload["query"]["all_flights"] is False
+    assert "flights" not in payload["dates"][0]

@@ -214,6 +214,13 @@ def serialize_flight_leg(leg: Any) -> dict[str, Any]:
     return payload
 
 
+def _serialize_compact_leg(leg: Any) -> dict[str, Any]:
+    """Serialize a flight leg without amenities (kayden-tools patch)."""
+    payload = serialize_flight_leg(leg)
+    payload.pop("amenities", None)
+    return payload
+
+
 def _serialize_flight_segment_result(
     flight: Any,
     *,
@@ -338,6 +345,20 @@ def serialize_date_result(
     legs = getattr(date_result, "legs", None)
     if legs:
         payload["legs"] = [serialize_flight_leg(leg) for leg in legs]
+    # kayden-tools patch: every priced itinerary (``--all-flights``). Amenities
+    # are dropped to keep a 31-day sweep's output small; the rest of each leg
+    # matches ``legs`` above.
+    flights = getattr(date_result, "flights", None)
+    if flights:
+        payload["flights"] = [
+            {
+                "price": flight.price,
+                "duration": flight.duration,
+                "stops": flight.stops,
+                "legs": [_serialize_compact_leg(leg) for leg in flight.legs],
+            }
+            for flight in flights
+        ]
     if origin and destination:
         payload["booking_url"] = google_flights_url(
             origin,

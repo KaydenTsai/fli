@@ -47,6 +47,14 @@ logger = logging.getLogger(__name__)
 
 PAGE_URL = "https://www.google.com/travel/flights"
 
+# kayden-tools patch: the page a browser lands on after "View more flights".
+# Its ``ds:1`` inlines every itinerary for the date (114 priced rows for
+# TPE→BKK on a 2026-12 date, against 19–23 on the default page). The ``tfu``
+# value is the page state the browser sends; it is copied from a browser
+# session, not derived from fli's own encoders.
+SHOW_ALL_PAGE_URL = "https://www.google.com/travel/flights/search"
+SHOW_ALL_TFU = "EgYIABABGAA"
+
 # Roughly one page in sixty comes back HTTP 200 with every other
 # ``AF_initDataCallback`` block present but no ``ds:1`` one — a transient
 # variant, not a block: the identical request succeeds seconds later. A round
@@ -169,12 +177,22 @@ def page_url(
     currency: str | None = None,
     language: str | None = None,
     country: str | None = None,
+    *,
+    show_all: bool = False,
 ) -> str:
-    """Build the search-page URL for a ``tfs`` value and locale."""
-    params = [f"tfs={tfs}", f"hl={language or 'en'}", f"gl={country or 'US'}"]
+    """Build the search-page URL for a ``tfs`` value and locale.
+
+    ``show_all`` addresses the expanded page instead of the default one
+    (kayden-tools patch, see KAYDEN_PATCHES.md).
+    """
+    params = [f"tfs={tfs}"]
+    if show_all:
+        params.append(f"tfu={SHOW_ALL_TFU}")
+    params += [f"hl={language or 'en'}", f"gl={country or 'US'}"]
     if currency:
         params.append(f"curr={currency}")
-    return f"{PAGE_URL}?{'&'.join(params)}"
+    base = SHOW_ALL_PAGE_URL if show_all else PAGE_URL
+    return f"{base}?{'&'.join(params)}"
 
 
 def extract_payload(html: str) -> Any | None:
